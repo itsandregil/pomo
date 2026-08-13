@@ -3,25 +3,29 @@ package main
 import (
 	"time"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/timer"
 	tea "charm.land/bubbletea/v2"
 )
 
 type model struct {
-	paused   bool
-	timer    timer.Model
-	spinner  spinner.Model
+	paused  bool
+	timer   timer.Model
+	spinner spinner.Model
+
+	help     help.Model
+	keymap   Keymap
 	quitting bool
 }
 
 func NewModel() model {
-	t := timer.New(25 * time.Minute)
-	s := spinner.New(spinner.WithSpinner(spinner.Dot))
-
 	return model{
-		timer:   t,
-		spinner: s,
+		timer:   timer.New(25 * time.Minute),
+		spinner: spinner.New(spinner.WithSpinner(spinner.Dot)),
+		help:    help.New(),
+		keymap:  DefaultKeybings(),
 	}
 }
 
@@ -34,17 +38,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "q":
+		switch {
+		case key.Matches(msg, m.keymap.Quit):
 			m.quitting = true
 			return m, tea.Quit
-		case "enter":
+		case key.Matches(msg, m.keymap.Enter):
 			m.paused = !m.paused
 			if !m.paused {
 				return m, tea.Batch(m.timer.Start(), m.spinner.Tick)
 			}
 			return m, m.timer.Stop()
 		}
+		m.help, _ = m.help.Update(msg)
+		return m, nil
 	}
 	var cmd tea.Cmd
 	if !m.paused {
@@ -61,5 +67,6 @@ func (m model) View() tea.View {
 		return tea.NewView("Bye" + "\n")
 	}
 	str := "Pomo" + "\n" + m.spinner.View() + m.timer.View() + "\n" + "Working Session"
+	str += "\n" + m.help.View(m.keymap)
 	return tea.NewView(str)
 }
