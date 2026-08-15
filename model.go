@@ -20,9 +20,9 @@ const (
 )
 
 const (
-	defaultFocusTime      = 25 * time.Minute
-	defaultShortBreakTime = 5 * time.Minute
-	defaultLongBreakTime  = 15 * time.Minute
+	defaultFocusTime      = 25 * time.Second
+	defaultShortBreakTime = 5 * time.Second
+	defaultLongBreakTime  = 15 * time.Second
 )
 
 type model struct {
@@ -73,6 +73,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keymap.Reset):
 			m.resetTimer()
 			return m, nil
+		case key.Matches(msg, m.keymap.Skip):
+			switch m.state {
+			case stateLongBreak:
+				m.state = stateFocus
+				m.pomoCounter = 0
+			case stateShortBreak:
+				m.state = stateFocus
+			}
+			m.resetTimer()
+			return m, nil
 		}
 		m.help, _ = m.help.Update(msg)
 		return m, nil
@@ -92,6 +102,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pomoCounter = 0
 		}
 		m.resetTimer()
+		m.UpdateKeymap()
 		return m, nil
 	}
 	var cmd tea.Cmd
