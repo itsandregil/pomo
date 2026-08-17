@@ -20,15 +20,17 @@ const (
 )
 
 const (
-	defaultFocusTime      = 25 * time.Second
-	defaultShortBreakTime = 5 * time.Second
-	defaultLongBreakTime  = 15 * time.Second
+	defaultFocusTime      = 25 * time.Minute
+	defaultShortBreakTime = 5 * time.Minute
+	defaultLongBreakTime  = 15 * time.Minute
 )
 
+type ResetTimerMsg struct{}
+
 type model struct {
-	state              state
-	pomoCounter        int
-	cyclesForLongBreak int
+	state             state
+	counter           int
+	longBreakInterval int
 
 	paused  bool
 	timer   timer.Model
@@ -41,18 +43,18 @@ type model struct {
 
 func NewModel() model {
 	return model{
-		state:              stateFocus,
-		cyclesForLongBreak: 4,
-		timer:              timer.New(defaultFocusTime),
-		spinner:            spinner.New(spinner.WithSpinner(spinner.Dot)),
-		help:               help.New(),
-		keymap:             DefaultKeybings(),
+		state:             stateFocus,
+		longBreakInterval: 4,
+		paused:            true,
+		timer:             timer.New(defaultFocusTime),
+		spinner:           spinner.New(spinner.WithSpinner(spinner.Dot)),
+		help:              help.New(),
+		keymap:            DefaultKeybings(),
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	timerCmd := m.timer.Init()
-	return tea.Batch(timerCmd, m.spinner.Tick)
+	return m.timer.Stop()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -65,44 +67,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case key.Matches(msg, m.keymap.Enter):
 			m.paused = !m.paused
-			m.UpdateKeymap()
+			m.updateKeymap()
 			if !m.paused {
 				return m, tea.Batch(m.timer.Start(), m.spinner.Tick)
 			}
 			return m, m.timer.Stop()
 		case key.Matches(msg, m.keymap.Reset):
-			m.resetTimer()
-			return m, nil
+			return m, resetTimerCmd()
 		case key.Matches(msg, m.keymap.Skip):
-			switch m.state {
-			case stateLongBreak:
-				m.state = stateFocus
-				m.pomoCounter = 0
-			case stateShortBreak:
-				m.state = stateFocus
-			}
-			m.resetTimer()
-			return m, nil
+			m.state = stateFocus
+			return m, resetTimerCmd()
 		}
+		// Toggle full help is not implemented, ignore Cmd
 		m.help, _ = m.help.Update(msg)
 		return m, nil
 	case timer.TimeoutMsg:
+		if m.state == stateFocus {
+			m.counter += 1
+			if m.counter >= m.longBreakInterval {
+				m.counter = 0
+				m.state = stateLongBreak
+				return m, resetTimerCmd()
+			}
+			m.state = stateShortBreak
+			return m, resetTimerCmd()
+		}
+		m.state = stateFocus
+		return m, resetTimerCmd()
+	case ResetTimerMsg:
+		var timeout time.Duration
 		switch m.state {
 		case stateFocus:
-			m.pomoCounter += 1
-			if m.pomoCounter >= m.cyclesForLongBreak {
-				m.state = stateLongBreak
-			} else {
-				m.state = stateShortBreak
-			}
+			timeout = defaultFocusTime
 		case stateShortBreak:
-			m.state = stateFocus
+			timeout = defaultShortBreakTime
 		case stateLongBreak:
-			m.state = stateFocus
-			m.pomoCounter = 0
+			timeout = defaultLongBreakTime
 		}
-		m.resetTimer()
-		m.UpdateKeymap()
+		m.timer = timer.New(timeout)
+		m.paused = true
+		m.updateKeymap()
 		return m, nil
 	}
 	var cmd tea.Cmd
@@ -117,35 +121,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() tea.View {
 	if m.quitting {
-		return tea.NewView("Bye" + "\n")
+		return tea.NewView("")
 	}
-	str := "Pomo" + "\n" + m.spinner.View() + m.timer.View() + "\n" + m.sessionView() + "\n"
-	str += fmt.Sprintf("Session %d/%d", m.pomoCounter, m.cyclesForLongBreak)
+	var message string
+	switch m.state {
+	case stateFocus:
+		message = "Focusing..."
+	case stateShortBreak, stateLongBreak:
+		message = "Time for a break..."
+	}
+	str := "Pomo" + "\n" + m.spinner.View() + m.timer.View() + "\n" + message + "\n"
+	str += fmt.Sprintf("Session %d/%d", m.counter, m.longBreakInterval)
 	str += "\n" + m.help.View(m.keymap)
 	return tea.NewView(str)
 }
 
-func (m *model) resetTimer() {
-	m.timer = timer.New(m.nextInterval())
-	m.paused = true
-}
-
-func (m model) nextInterval() time.Duration {
-	if m.state == stateShortBreak {
-		return defaultShortBreakTime
+func resetTimerCmd() tea.Cmd {
+	return func() tea.Msg {
+		return ResetTimerMsg{}
 	}
-	if m.state == stateLongBreak {
-		return defaultLongBreakTime
-	}
-	return defaultFocusTime
-}
-
-func (m model) sessionView() string {
-	if m.state == stateShortBreak {
-		return "Time for a break..."
-	}
-	if m.state == stateLongBreak {
-		return "Take a break! You deserve it."
-	}
-	return "Focusing..."
 }

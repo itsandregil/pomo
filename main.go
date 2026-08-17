@@ -10,7 +10,7 @@ import (
 func main() {
 	p := tea.NewProgram(NewModel())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "running program: %w", err)
+		fmt.Fprintf(os.Stderr, "running program: %s", err)
 		os.Exit(1)
 	}
 }

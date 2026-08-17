@@ -47,7 +47,7 @@ func (k Keymap) FullHelp() [][]key.Binding {
 	}
 }
 
-func (m *model) UpdateKeymap() {
-	m.keymap.Reset.SetEnabled(m.paused)
+func (m *model) updateKeymap() {
+	m.keymap.Reset.SetEnabled(m.paused && m.state == stateFocus)
 	m.keymap.Skip.SetEnabled(m.paused && m.state != stateFocus)
 }
