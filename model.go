@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/timer"
 	tea "charm.land/bubbletea/v2"
+	"github.com/gen2brain/beeep"
 )
 
 type state int
@@ -25,7 +26,7 @@ const (
 	defaultLongBreakTime  = 15 * time.Minute
 )
 
-type ResetTimerMsg struct{}
+type resetTimerMsg struct{}
 
 type model struct {
 	state             state
@@ -82,6 +83,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help, _ = m.help.Update(msg)
 		return m, nil
 	case timer.TimeoutMsg:
+		beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
 		if m.state == stateFocus {
 			m.counter += 1
 			if m.counter >= m.longBreakInterval {
@@ -94,7 +96,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.state = stateFocus
 		return m, resetTimerCmd()
-	case ResetTimerMsg:
+	case resetTimerMsg:
 		var timeout time.Duration
 		switch m.state {
 		case stateFocus:
@@ -126,18 +128,20 @@ func (m model) View() tea.View {
 	var message string
 	switch m.state {
 	case stateFocus:
-		message = "Focusing..."
-	case stateShortBreak, stateLongBreak:
-		message = "Time for a break..."
+		message = focusTimerStyle.Render("Focusing...")
+	case stateShortBreak:
+		message = shortBreakTimerStyle.Render("Time for a break...")
+	case stateLongBreak:
+		message = longTBreakimerStyle.Render("Take a long break!")
 	}
 	str := "Pomo" + "\n" + m.spinner.View() + m.timer.View() + "\n" + message + "\n"
 	str += fmt.Sprintf("Session %d/%d", m.counter, m.longBreakInterval)
 	str += "\n" + m.help.View(m.keymap)
-	return tea.NewView(str)
+	return tea.NewView(appStyle.Render(str))
 }
 
 func resetTimerCmd() tea.Cmd {
 	return func() tea.Msg {
-		return ResetTimerMsg{}
+		return resetTimerMsg{}
 	}
 }
